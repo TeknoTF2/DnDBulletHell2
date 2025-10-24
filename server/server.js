@@ -209,20 +209,36 @@ io.on('connection', (socket) => {
           }));
 
           gameState.activeSquares = [...gameState.activeSquares, ...damageSquares];
-
-          // Check for hits
-          squares.forEach(square => {
-            Object.keys(gameState.players).forEach(playerId => {
-              const player = gameState.players[playerId];
-              if (player.row === square.row && player.col === square.col) {
-                player.hits++;
-              }
-            });
-          });
-
           broadcastGameState();
 
-          // Clear squares after damage phase
+          // Function to check for hits
+          const checkHits = () => {
+            squares.forEach(square => {
+              Object.keys(gameState.players).forEach(playerId => {
+                const player = gameState.players[playerId];
+                if (player && player.row === square.row && player.col === square.col) {
+                  player.hits++;
+                  console.log(`Player ${player.name} hit! Total hits: ${player.hits}`);
+                }
+              });
+            });
+            broadcastGameState();
+          };
+
+          // Check for hits immediately (at 0 seconds)
+          checkHits();
+
+          // Check for hits at 1 second
+          const hitCheck1 = setTimeout(() => {
+            checkHits();
+          }, 1000);
+
+          // Check for hits at 2 seconds
+          const hitCheck2 = setTimeout(() => {
+            checkHits();
+          }, 2000);
+
+          // Clear squares after damage phase (at 3 seconds)
           setTimeout(() => {
             gameState.activeSquares = gameState.activeSquares.filter(
               s => !squareIds.includes(s.id)
