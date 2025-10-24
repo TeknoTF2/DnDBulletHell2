@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bullet Hell D&D</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Connection Screen -->
+        <div id="connectionScreen" class="screen">
+            <div class="connection-box">
+                <h1>Bullet Hell D&D</h1>
+                <div class="connection-options">
+                    <div class="option-group">
+                        <h2>Dungeon Master</h2>
+                        <label>Grid Rows:</label>
+                        <input type="number" id="gridRows" value="10" min="5" max="30">
+                        <label>Grid Columns:</label>
+                        <input type="number" id="gridCols" value="10" min="5" max="30">
+                        <button id="createGameBtn">Create Game</button>
+                    </div>
+                    <div class="divider">OR</div>
+                    <div class="option-group">
+                        <h2>Player</h2>
+                        <label>Your Name:</label>
+                        <input type="text" id="playerName" placeholder="Enter your name">
+                        <button id="joinGameBtn">Join Game</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen hidden">
+            <div class="game-layout">
+                <!-- Left Sidebar - Player List -->
+                <div class="sidebar left-sidebar">
+                    <h2>Players</h2>
+                    <div id="playersList"></div>
+                </div>
+
+                <!-- Main Game Area -->
+                <div class="game-container">
+                    <div id="gridContainer">
+                        <canvas id="gameCanvas"></canvas>
+                    </div>
+                    <div class="controls-hint">
+                        Use Arrow Keys to Move
+                    </div>
+                </div>
+
+                <!-- Right Sidebar - DM Controls -->
+                <div class="sidebar right-sidebar" id="dmControls" style="display: none;">
+                    <h2>DM Controls</h2>
+
+                    <!-- Grid Settings -->
+                    <div class="control-section">
+                        <h3>Grid Settings</h3>
+                        <label>Rows:</label>
+                        <input type="number" id="dmGridRows" min="5" max="30">
+                        <label>Columns:</label>
+                        <input type="number" id="dmGridCols" min="5" max="30">
+                        <button id="updateGridBtn">Update Grid</button>
+
+                        <label>Background Image:</label>
+                        <input type="file" id="bgImageUpload" accept="image/*">
+                    </div>
+
+                    <!-- Pattern Editor -->
+                    <div class="control-section">
+                        <h3>Pattern Editor</h3>
+                        <div id="patternSquares"></div>
+                        <label>Pattern Name:</label>
+                        <input type="text" id="patternName" placeholder="Pattern name">
+                        <button id="savePatternBtn">Save Pattern</button>
+                        <button id="clearPatternBtn">Clear</button>
+                        <div class="hint">Click grid squares to add to pattern. Click square again to set timing.</div>
+                    </div>
+
+                    <!-- Saved Patterns -->
+                    <div class="control-section">
+                        <h3>Saved Patterns</h3>
+                        <div id="savedPatternsList"></div>
+                    </div>
+
+                    <!-- Player Management -->
+                    <div class="control-section">
+                        <h3>Player Management</h3>
+                        <div id="dmPlayersList"></div>
+                    </div>
+                </div>
+
+                <!-- Player Controls -->
+                <div class="sidebar right-sidebar" id="playerControls" style="display: none;">
+                    <h2>Player Controls</h2>
+
+                    <div class="control-section">
+                        <h3>Customize Token</h3>
+                        <label>Name:</label>
+                        <input type="text" id="playerNameInput" placeholder="Your name">
+                        <button id="updateNameBtn">Update Name</button>
+
+                        <label>Token Image:</label>
+                        <input type="file" id="tokenImageUpload" accept="image/*">
+
+                        <div id="playerStats"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>
