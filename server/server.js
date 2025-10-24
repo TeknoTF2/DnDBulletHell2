@@ -174,26 +174,41 @@ io.on('connection', (socket) => {
 
     // Schedule each timing group
     Object.keys(timingGroups).forEach(timing => {
-      const delay = parseInt(timing) * 1000;
+      const delay = parseFloat(timing) * 1000;
 
       setTimeout(() => {
         const squares = timingGroups[timing];
 
+        // Add unique IDs to track these specific squares
+        const squareIds = squares.map(s => `${s.row}-${s.col}-${Date.now()}-${Math.random()}`);
+
         // Warning phase (orange) - 1 second
-        gameState.activeSquares = squares.map(s => ({
+        // Add to existing active squares instead of replacing
+        const warningSquares = squares.map((s, idx) => ({
           row: s.row,
           col: s.col,
-          phase: 'warning'
+          phase: 'warning',
+          id: squareIds[idx]
         }));
+
+        gameState.activeSquares = [...gameState.activeSquares, ...warningSquares];
         broadcastGameState();
 
         // Damage phase (red) - 3 seconds
         setTimeout(() => {
-          gameState.activeSquares = squares.map(s => ({
+          // Remove warning squares and add damage squares for this group
+          gameState.activeSquares = gameState.activeSquares.filter(
+            s => !squareIds.includes(s.id)
+          );
+
+          const damageSquares = squares.map((s, idx) => ({
             row: s.row,
             col: s.col,
-            phase: 'damage'
+            phase: 'damage',
+            id: squareIds[idx]
           }));
+
+          gameState.activeSquares = [...gameState.activeSquares, ...damageSquares];
 
           // Check for hits
           squares.forEach(square => {
@@ -210,7 +225,7 @@ io.on('connection', (socket) => {
           // Clear squares after damage phase
           setTimeout(() => {
             gameState.activeSquares = gameState.activeSquares.filter(
-              s => !squares.some(sq => sq.row === s.row && sq.col === s.col)
+              s => !squareIds.includes(s.id)
             );
             broadcastGameState();
           }, 3000);

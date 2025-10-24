@@ -229,9 +229,9 @@ function handleBackgroundUpload(e) {
         return;
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-        alert('Image too large. Please select an image under 5MB');
+    // Validate file size (max 50MB for large D&D maps)
+    if (file.size > 50 * 1024 * 1024) {
+        alert('Image too large. Please select an image under 50MB');
         return;
     }
 
@@ -259,9 +259,9 @@ function handleTokenUpload(e) {
         return;
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-        alert('Image too large. Please select an image under 5MB');
+    // Validate file size (max 50MB for large D&D maps)
+    if (file.size > 50 * 1024 * 1024) {
+        alert('Image too large. Please select an image under 50MB');
         return;
     }
 
