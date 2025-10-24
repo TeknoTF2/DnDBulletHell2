@@ -32,18 +32,36 @@ A browser-based multiplayer bullet hell game for D&D campaigns! Instead of rolli
 
 ## How to Run
 
-### Start the Server
+### Option 1: Deploy to Render (Recommended for Online Play)
+
+This is the easiest way to play with friends online!
+
+1. Push this repository to GitHub
+2. Go to [Render.com](https://render.com) and sign up/login
+3. Click "New +" and select "Web Service"
+4. Connect your GitHub repository
+5. Render will auto-detect the settings, just click "Create Web Service"
+6. Wait for deployment (2-3 minutes)
+7. Share the Render URL with your players!
+
+That's it! Render will automatically use the `render.yaml` configuration.
+
+### Option 2: Run Locally
+
+#### Start the Server
 ```bash
-cd server
+npm install
 npm start
 ```
 
 Server runs on `http://localhost:3001`
 
-### Access the Game
+#### Access the Game
 1. Open your browser to `http://localhost:3001`
 2. The DM should click "Create Game" first and set the grid size
 3. Players can then join by entering their name and clicking "Join Game"
+
+**Note:** For local multiplayer, all players need to be on the same network and access your computer's local IP address.
 
 ## How to Play
 

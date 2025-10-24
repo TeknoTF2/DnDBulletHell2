@@ -1,5 +1,5 @@
-// Socket.IO connection
-const socket = io('http://localhost:3001');
+// Socket.IO connection - connects to the same origin that served this page
+const socket = io();
 
 // Game state
 let gameState = null;
