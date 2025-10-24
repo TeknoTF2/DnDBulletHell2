@@ -10,6 +10,8 @@ let canvas, ctx;
 let cellSize = 50;
 let backgroundImage = null;
 let tokenImageCache = {}; // Cache for player token images
+let dmControlsSetup = false; // Track if DM controls have been initialized
+let playerControlsSetup = false; // Track if player controls have been initialized
 
 // DOM Elements
 const connectionScreen = document.getElementById('connectionScreen');
@@ -46,7 +48,7 @@ socket.on('dmStatus', (status) => {
     if (isDM) {
         dmControls.style.display = 'block';
         playerControls.style.display = 'none';
-        setupDMControls();
+        // Setup will happen when gameState is received
     }
 });
 
@@ -54,7 +56,7 @@ socket.on('playerId', (id) => {
     myPlayerId = id;
     playerControls.style.display = 'block';
     dmControls.style.display = 'none';
-    setupPlayerControls();
+    // Setup will happen when gameState is received
 });
 
 // Create Game (DM)
@@ -165,52 +167,48 @@ window.removePatternSquare = function(index) {
 
 // Setup DM Controls
 function setupDMControls() {
-    if (!gameState) return;
+    if (dmControlsSetup) return; // Only setup once
+    dmControlsSetup = true;
 
-    document.getElementById('dmGridRows').value = gameState.gridRows;
-    document.getElementById('dmGridCols').value = gameState.gridCols;
+    console.log('Setting up DM controls');
 
-    // Remove existing listeners by cloning elements (prevents duplicate listeners)
-    const updateGridBtn = document.getElementById('updateGridBtn');
-    const newUpdateBtn = updateGridBtn.cloneNode(true);
-    updateGridBtn.parentNode.replaceChild(newUpdateBtn, updateGridBtn);
-    newUpdateBtn.addEventListener('click', () => {
+    // Grid size controls
+    document.getElementById('updateGridBtn').addEventListener('click', () => {
         const rows = parseInt(document.getElementById('dmGridRows').value);
         const cols = parseInt(document.getElementById('dmGridCols').value);
         socket.emit('updateGridSize', { rows, cols });
     });
 
-    const bgImageUpload = document.getElementById('bgImageUpload');
-    const newBgUpload = bgImageUpload.cloneNode(true);
-    bgImageUpload.parentNode.replaceChild(newBgUpload, bgImageUpload);
-    newBgUpload.addEventListener('change', handleBackgroundUpload);
+    // Background image upload
+    document.getElementById('bgImageUpload').addEventListener('change', handleBackgroundUpload);
 
-    const savePatternBtn = document.getElementById('savePatternBtn');
-    const newSaveBtn = savePatternBtn.cloneNode(true);
-    savePatternBtn.parentNode.replaceChild(newSaveBtn, savePatternBtn);
-    newSaveBtn.addEventListener('click', savePattern);
-
-    const clearPatternBtn = document.getElementById('clearPatternBtn');
-    const newClearBtn = clearPatternBtn.cloneNode(true);
-    clearPatternBtn.parentNode.replaceChild(newClearBtn, clearPatternBtn);
-    newClearBtn.addEventListener('click', () => {
+    // Pattern controls
+    document.getElementById('savePatternBtn').addEventListener('click', savePattern);
+    document.getElementById('clearPatternBtn').addEventListener('click', () => {
         currentPattern = [];
         renderPatternSquares();
         renderGame();
     });
+
+    // Update grid size fields if gameState exists
+    if (gameState) {
+        document.getElementById('dmGridRows').value = gameState.gridRows;
+        document.getElementById('dmGridCols').value = gameState.gridCols;
+    }
 }
 
 // Setup Player Controls
 function setupPlayerControls() {
-    const tokenImageUpload = document.getElementById('tokenImageUpload');
-    const newTokenUpload = tokenImageUpload.cloneNode(true);
-    tokenImageUpload.parentNode.replaceChild(newTokenUpload, tokenImageUpload);
-    newTokenUpload.addEventListener('change', handleTokenUpload);
+    if (playerControlsSetup) return; // Only setup once
+    playerControlsSetup = true;
 
-    const updateNameBtn = document.getElementById('updateNameBtn');
-    const newNameBtn = updateNameBtn.cloneNode(true);
-    updateNameBtn.parentNode.replaceChild(newNameBtn, updateNameBtn);
-    newNameBtn.addEventListener('click', () => {
+    console.log('Setting up player controls');
+
+    // Token image upload
+    document.getElementById('tokenImageUpload').addEventListener('change', handleTokenUpload);
+
+    // Name update (future feature)
+    document.getElementById('updateNameBtn').addEventListener('click', () => {
         const newName = document.getElementById('playerNameInput').value.trim();
         if (newName) {
             alert('Name update feature coming soon! Rejoin with new name for now.');
@@ -342,6 +340,13 @@ function handleKeyPress(e) {
 // Render the game
 function renderGame() {
     if (!gameState || !canvas || !ctx) return;
+
+    // Setup controls once we have gameState
+    if (isDM) {
+        setupDMControls();
+    } else if (myPlayerId) {
+        setupPlayerControls();
+    }
 
     // Calculate canvas size
     const maxWidth = window.innerWidth - (isDM || myPlayerId ? 600 : 300);
