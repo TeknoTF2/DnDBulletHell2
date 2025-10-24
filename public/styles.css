@@ -1,0 +1,392 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
+    min-height: 100vh;
+    color: #fff;
+}
+
+.screen {
+    width: 100%;
+    height: 100vh;
+}
+
+.screen.hidden {
+    display: none;
+}
+
+/* Connection Screen */
+#connectionScreen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.connection-box {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.connection-box h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 2.5em;
+    background: linear-gradient(45deg, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.connection-options {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+}
+
+.option-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 250px;
+}
+
+.option-group h2 {
+    margin-bottom: 10px;
+    font-size: 1.5em;
+}
+
+.option-group label {
+    font-size: 0.9em;
+    color: #e0e0e0;
+}
+
+.option-group input {
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 1em;
+}
+
+.option-group input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.option-group button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(45deg, #10b981, #059669);
+    color: #fff;
+    font-size: 1.1em;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top: 10px;
+}
+
+.option-group button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.divider {
+    font-size: 1.5em;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: bold;
+}
+
+/* Game Screen */
+.game-layout {
+    display: flex;
+    height: 100vh;
+    gap: 20px;
+    padding: 20px;
+}
+
+.sidebar {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border-radius: 15px;
+    padding: 20px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.left-sidebar {
+    width: 250px;
+}
+
+.right-sidebar {
+    width: 300px;
+}
+
+.sidebar h2 {
+    margin-bottom: 20px;
+    font-size: 1.5em;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 10px;
+}
+
+.sidebar h3 {
+    margin-top: 15px;
+    margin-bottom: 10px;
+    font-size: 1.2em;
+    color: #fbbf24;
+}
+
+/* Game Container */
+.game-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+}
+
+#gridContainer {
+    position: relative;
+    display: inline-block;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+#gameCanvas {
+    display: block;
+    cursor: crosshair;
+}
+
+.controls-hint {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 1.1em;
+}
+
+/* Player List */
+.player-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border-left: 4px solid;
+}
+
+.player-item .name {
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 5px;
+}
+
+.player-item .stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9em;
+    color: #e0e0e0;
+}
+
+/* DM Controls */
+.control-section {
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-section:last-child {
+    border-bottom: none;
+}
+
+.control-section label {
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: #e0e0e0;
+}
+
+.control-section input[type="number"],
+.control-section input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 0.9em;
+}
+
+.control-section input[type="file"] {
+    width: 100%;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+}
+
+.control-section button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: linear-gradient(45deg, #3b82f6, #2563eb);
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.2s;
+    margin-top: 8px;
+    margin-right: 5px;
+}
+
+.control-section button:hover {
+    transform: translateY(-1px);
+}
+
+.control-section button:active {
+    transform: translateY(0);
+}
+
+.hint {
+    font-size: 0.8em;
+    color: #a0a0a0;
+    margin-top: 10px;
+    font-style: italic;
+}
+
+/* Pattern Squares List */
+#patternSquares {
+    max-height: 150px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.pattern-square-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+}
+
+.pattern-square-item input {
+    width: 60px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    text-align: center;
+}
+
+.pattern-square-item button {
+    padding: 4px 8px;
+    background: rgba(239, 68, 68, 0.8);
+    font-size: 0.8em;
+    margin: 0;
+}
+
+/* Saved Patterns */
+#savedPatternsList {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.pattern-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.pattern-item .pattern-name {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #fbbf24;
+}
+
+.pattern-item .pattern-info {
+    font-size: 0.85em;
+    color: #c0c0c0;
+    margin-bottom: 8px;
+}
+
+.pattern-item button {
+    background: linear-gradient(45deg, #f59e0b, #d97706);
+    margin-top: 5px;
+}
+
+/* DM Player Management */
+.dm-player-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.dm-player-item .dm-player-name {
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.dm-player-item label {
+    display: block;
+    font-size: 0.85em;
+    margin-top: 5px;
+    margin-bottom: 2px;
+}
+
+.dm-player-item input {
+    width: 100%;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .game-layout {
+        flex-direction: column;
+    }
+
+    .left-sidebar,
+    .right-sidebar {
+        width: 100%;
+        max-height: 300px;
+    }
+}
