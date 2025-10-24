@@ -109,6 +109,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateSpeed', (data) => {
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized speed update attempt from:', socket.id);
+      return;
+    }
+
     const player = gameState.players[data.playerId];
     if (player) {
       player.speed = data.speed;
@@ -118,87 +123,112 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateGridSize', (data) => {
-    if (socket.id === gameState.dm) {
-      gameState.gridRows = data.rows;
-      gameState.gridCols = data.cols;
-      broadcastGameState();
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized grid size update attempt from:', socket.id);
+      return;
     }
+
+    gameState.gridRows = data.rows;
+    gameState.gridCols = data.cols;
+    broadcastGameState();
   });
 
   socket.on('updateBackground', (imageData) => {
-    if (socket.id === gameState.dm) {
-      gameState.backgroundImage = imageData;
-      broadcastGameState();
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized background update attempt from:', socket.id);
+      return;
     }
+
+    gameState.backgroundImage = imageData;
+    broadcastGameState();
   });
 
   socket.on('savePattern', (pattern) => {
-    if (socket.id === gameState.dm) {
-      gameState.savedPatterns.push(pattern);
-      broadcastGameState();
-      console.log('Pattern saved:', pattern.name);
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized pattern save attempt from:', socket.id);
+      return;
     }
+
+    gameState.savedPatterns.push(pattern);
+    broadcastGameState();
+    console.log('Pattern saved:', pattern.name);
   });
 
   socket.on('launchPattern', (pattern) => {
-    if (socket.id === gameState.dm) {
-      console.log('Launching pattern:', pattern.name);
-      
-      // Group squares by timing
-      const timingGroups = {};
-      pattern.squares.forEach(square => {
-        const timing = square.timing || 0;
-        if (!timingGroups[timing]) {
-          timingGroups[timing] = [];
-        }
-        timingGroups[timing].push(square);
-      });
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized pattern launch attempt from:', socket.id);
+      return;
+    }
 
-      // Schedule each timing group
-      Object.keys(timingGroups).forEach(timing => {
-        const delay = parseInt(timing) * 1000;
-        
+    console.log('Launching pattern:', pattern.name);
+
+    // Group squares by timing
+    const timingGroups = {};
+    pattern.squares.forEach(square => {
+      const timing = square.timing || 0;
+      if (!timingGroups[timing]) {
+        timingGroups[timing] = [];
+      }
+      timingGroups[timing].push(square);
+    });
+
+    // Schedule each timing group
+    Object.keys(timingGroups).forEach(timing => {
+      const delay = parseInt(timing) * 1000;
+
+      setTimeout(() => {
+        const squares = timingGroups[timing];
+
+        // Warning phase (orange) - 1 second
+        gameState.activeSquares = squares.map(s => ({
+          row: s.row,
+          col: s.col,
+          phase: 'warning'
+        }));
+        broadcastGameState();
+
+        // Damage phase (red) - 3 seconds
         setTimeout(() => {
-          const squares = timingGroups[timing];
-          
-          // Warning phase (orange) - 1 second
           gameState.activeSquares = squares.map(s => ({
             row: s.row,
             col: s.col,
-            phase: 'warning'
+            phase: 'damage'
           }));
+
+          // Check for hits
+          squares.forEach(square => {
+            Object.keys(gameState.players).forEach(playerId => {
+              const player = gameState.players[playerId];
+              if (player.row === square.row && player.col === square.col) {
+                player.hits++;
+              }
+            });
+          });
+
           broadcastGameState();
 
-          // Damage phase (red) - 3 seconds
+          // Clear squares after damage phase
           setTimeout(() => {
-            gameState.activeSquares = squares.map(s => ({
-              row: s.row,
-              col: s.col,
-              phase: 'damage'
-            }));
-            
-            // Check for hits
-            squares.forEach(square => {
-              Object.keys(gameState.players).forEach(playerId => {
-                const player = gameState.players[playerId];
-                if (player.row === square.row && player.col === square.col) {
-                  player.hits++;
-                }
-              });
-            });
-            
+            gameState.activeSquares = gameState.activeSquares.filter(
+              s => !squares.some(sq => sq.row === s.row && sq.col === s.col)
+            );
             broadcastGameState();
+          }, 3000);
+        }, 1000);
+      }, delay);
+    });
+  });
 
-            // Clear squares after damage phase
-            setTimeout(() => {
-              gameState.activeSquares = gameState.activeSquares.filter(
-                s => !squares.some(sq => sq.row === s.row && sq.col === s.col)
-              );
-              broadcastGameState();
-            }, 3000);
-          }, 1000);
-        }, delay);
-      });
+  socket.on('deletePattern', (index) => {
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized pattern deletion attempt from:', socket.id);
+      return;
+    }
+
+    if (index >= 0 && index < gameState.savedPatterns.length) {
+      gameState.savedPatterns.splice(index, 1);
+      broadcastGameState();
+      console.log('Pattern deleted at index:', index);
     }
   });
 

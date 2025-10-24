@@ -9,6 +9,7 @@ let currentPattern = [];
 let canvas, ctx;
 let cellSize = 50;
 let backgroundImage = null;
+let tokenImageCache = {}; // Cache for player token images
 
 // DOM Elements
 const connectionScreen = document.getElementById('connectionScreen');
@@ -29,6 +30,14 @@ socket.on('connect', () => {
 
 socket.on('gameState', (state) => {
     gameState = state;
+
+    // Clean up token image cache for disconnected players
+    Object.keys(tokenImageCache).forEach(playerId => {
+        if (!gameState.players[playerId]) {
+            delete tokenImageCache[playerId];
+        }
+    });
+
     renderGame();
 });
 
@@ -156,19 +165,35 @@ window.removePatternSquare = function(index) {
 
 // Setup DM Controls
 function setupDMControls() {
+    if (!gameState) return;
+
     document.getElementById('dmGridRows').value = gameState.gridRows;
     document.getElementById('dmGridCols').value = gameState.gridCols;
 
-    document.getElementById('updateGridBtn').addEventListener('click', () => {
+    // Remove existing listeners by cloning elements (prevents duplicate listeners)
+    const updateGridBtn = document.getElementById('updateGridBtn');
+    const newUpdateBtn = updateGridBtn.cloneNode(true);
+    updateGridBtn.parentNode.replaceChild(newUpdateBtn, updateGridBtn);
+    newUpdateBtn.addEventListener('click', () => {
         const rows = parseInt(document.getElementById('dmGridRows').value);
         const cols = parseInt(document.getElementById('dmGridCols').value);
         socket.emit('updateGridSize', { rows, cols });
     });
 
-    document.getElementById('bgImageUpload').addEventListener('change', handleBackgroundUpload);
+    const bgImageUpload = document.getElementById('bgImageUpload');
+    const newBgUpload = bgImageUpload.cloneNode(true);
+    bgImageUpload.parentNode.replaceChild(newBgUpload, bgImageUpload);
+    newBgUpload.addEventListener('change', handleBackgroundUpload);
 
-    document.getElementById('savePatternBtn').addEventListener('click', savePattern);
-    document.getElementById('clearPatternBtn').addEventListener('click', () => {
+    const savePatternBtn = document.getElementById('savePatternBtn');
+    const newSaveBtn = savePatternBtn.cloneNode(true);
+    savePatternBtn.parentNode.replaceChild(newSaveBtn, savePatternBtn);
+    newSaveBtn.addEventListener('click', savePattern);
+
+    const clearPatternBtn = document.getElementById('clearPatternBtn');
+    const newClearBtn = clearPatternBtn.cloneNode(true);
+    clearPatternBtn.parentNode.replaceChild(newClearBtn, clearPatternBtn);
+    newClearBtn.addEventListener('click', () => {
         currentPattern = [];
         renderPatternSquares();
         renderGame();
@@ -177,12 +202,17 @@ function setupDMControls() {
 
 // Setup Player Controls
 function setupPlayerControls() {
-    document.getElementById('tokenImageUpload').addEventListener('change', handleTokenUpload);
+    const tokenImageUpload = document.getElementById('tokenImageUpload');
+    const newTokenUpload = tokenImageUpload.cloneNode(true);
+    tokenImageUpload.parentNode.replaceChild(newTokenUpload, tokenImageUpload);
+    newTokenUpload.addEventListener('change', handleTokenUpload);
 
-    document.getElementById('updateNameBtn').addEventListener('click', () => {
+    const updateNameBtn = document.getElementById('updateNameBtn');
+    const newNameBtn = updateNameBtn.cloneNode(true);
+    updateNameBtn.parentNode.replaceChild(newNameBtn, updateNameBtn);
+    newNameBtn.addEventListener('click', () => {
         const newName = document.getElementById('playerNameInput').value.trim();
         if (newName) {
-            // This would require a new server event - for now just inform user
             alert('Name update feature coming soon! Rejoin with new name for now.');
         }
     });
@@ -193,9 +223,27 @@ function handleBackgroundUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file is an image
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('Image too large. Please select an image under 5MB');
+        return;
+    }
+
+    console.log('Uploading background image:', file.name);
+
     const reader = new FileReader();
     reader.onload = (event) => {
         socket.emit('updateBackground', event.target.result);
+        console.log('Background image uploaded successfully');
+    };
+    reader.onerror = () => {
+        alert('Error reading image file');
     };
     reader.readAsDataURL(file);
 }
@@ -205,9 +253,27 @@ function handleTokenUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file is an image
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('Image too large. Please select an image under 5MB');
+        return;
+    }
+
+    console.log('Uploading token image:', file.name);
+
     const reader = new FileReader();
     reader.onload = (event) => {
         socket.emit('updateTokenImage', event.target.result);
+        console.log('Token image uploaded successfully');
+    };
+    reader.onerror = () => {
+        alert('Error reading image file');
     };
     reader.readAsDataURL(file);
 }
@@ -362,12 +428,22 @@ function renderGame() {
         const y = player.row * cellSize;
 
         if (player.tokenImage) {
-            const img = new Image();
-            img.src = player.tokenImage;
-            if (img.complete) {
+            // Use cached image or create new one
+            if (!tokenImageCache[player.id] || tokenImageCache[player.id].src !== player.tokenImage) {
+                tokenImageCache[player.id] = new Image();
+                tokenImageCache[player.id].src = player.tokenImage;
+                tokenImageCache[player.id].onload = () => renderGame();
+            }
+
+            const img = tokenImageCache[player.id];
+            if (img.complete && img.naturalWidth > 0) {
                 ctx.drawImage(img, x + 2, y + 2, cellSize - 4, cellSize - 4);
             } else {
-                img.onload = () => renderGame();
+                // Draw placeholder while image loads
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                ctx.arc(x + cellSize / 2, y + cellSize / 2, cellSize / 3, 0, Math.PI * 2);
+                ctx.fill();
             }
         } else {
             // Draw colored circle as default token
@@ -457,8 +533,7 @@ window.launchPattern = function(index) {
 window.deletePattern = function(index) {
     if (!isDM) return;
     if (confirm('Delete this pattern?')) {
-        gameState.savedPatterns.splice(index, 1);
-        updateSavedPatternsList();
+        socket.emit('deletePattern', index);
     }
 };
 
