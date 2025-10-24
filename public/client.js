@@ -119,14 +119,15 @@ function togglePatternSquare(row, col) {
     const existingIndex = currentPattern.findIndex(s => s.row === row && s.col === col);
 
     if (existingIndex >= 0) {
-        // If square exists, prompt for timing
-        const timing = prompt(`Set timing for square (${row}, ${col}) in seconds:`, currentPattern[existingIndex].timing || 0);
-        if (timing !== null) {
-            currentPattern[existingIndex].timing = parseFloat(timing);
+        // If square exists, ask if they want to edit or remove
+        const action = prompt(`Square (${row}, ${col}) - Type 'remove' to delete, or press OK to edit:`, '');
+        if (action && action.toLowerCase() === 'remove') {
+            currentPattern.splice(existingIndex, 1);
         }
+        // User can edit via the pattern squares list
     } else {
-        // Add new square with default timing of 0
-        currentPattern.push({ row, col, timing: 0 });
+        // Add new square with default timing of 0 and duration of 3
+        currentPattern.push({ row, col, timing: 0, duration: 3 });
     }
 
     renderPatternSquares();
@@ -144,10 +145,26 @@ function renderPatternSquares() {
         const div = document.createElement('div');
         div.className = 'pattern-square-item';
         div.innerHTML = `
-            <span>(${square.row}, ${square.col})</span>
-            <input type="number" value="${square.timing}" step="0.1" min="0"
-                   onchange="updateSquareTiming(${index}, this.value)">
-            <button onclick="removePatternSquare(${index})">Remove</button>
+            <div style="display: flex; flex-direction: column; width: 100%; gap: 5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><strong>(${square.row}, ${square.col})</strong></span>
+                    <button onclick="removePatternSquare(${index})" style="margin: 0;">Remove</button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.85em;">
+                    <label style="margin: 0;">Launch:</label>
+                    <input type="number" value="${square.timing || 0}" step="0.1" min="0"
+                           onchange="updateSquareTiming(${index}, this.value)"
+                           style="width: 60px; padding: 2px 4px;">
+                    <span>s</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.85em;">
+                    <label style="margin: 0;">Duration:</label>
+                    <input type="number" value="${square.duration || 3}" step="0.5" min="0.5" max="10"
+                           onchange="updateSquareDuration(${index}, this.value)"
+                           style="width: 60px; padding: 2px 4px;">
+                    <span>s</span>
+                </div>
+            </div>
         `;
         container.appendChild(div);
     });
@@ -156,6 +173,17 @@ function renderPatternSquares() {
 // Update square timing
 window.updateSquareTiming = function(index, value) {
     currentPattern[index].timing = parseFloat(value) || 0;
+};
+
+// Update square duration
+window.updateSquareDuration = function(index, value) {
+    currentPattern[index].duration = parseFloat(value) || 3;
+    if (currentPattern[index].duration < 0.5) {
+        currentPattern[index].duration = 0.5;
+    }
+    if (currentPattern[index].duration > 10) {
+        currentPattern[index].duration = 10;
+    }
 };
 
 // Remove pattern square
@@ -418,12 +446,21 @@ function renderGame() {
             ctx.fillStyle = 'rgba(255, 255, 0, 0.3)'; // Yellow preview
             ctx.fillRect(x, y, cellSize, cellSize);
 
-            // Draw timing label
+            // Draw timing and duration labels
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 14px Arial';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.font = 'bold 11px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`${square.timing}s`, x + cellSize / 2, y + cellSize / 2);
+
+            // Draw timing (when it launches)
+            ctx.strokeText(`@${square.timing}s`, x + cellSize / 2, y + cellSize / 2 - 8);
+            ctx.fillText(`@${square.timing}s`, x + cellSize / 2, y + cellSize / 2 - 8);
+
+            // Draw duration (how long it lasts)
+            ctx.strokeText(`${square.duration}s`, x + cellSize / 2, y + cellSize / 2 + 8);
+            ctx.fillText(`${square.duration}s`, x + cellSize / 2, y + cellSize / 2 + 8);
         });
     }
 
@@ -514,12 +551,14 @@ function updateSavedPatternsList() {
         const div = document.createElement('div');
         div.className = 'pattern-item';
 
-        const timings = pattern.squares.map(s => s.timing).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+        const timings = pattern.squares.map(s => s.timing || 0).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+        const durations = pattern.squares.map(s => s.duration || 3).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
 
         div.innerHTML = `
             <div class="pattern-name">${pattern.name}</div>
             <div class="pattern-info">${pattern.squares.length} squares</div>
-            <div class="pattern-info">Timings: ${timings.join(', ')}s</div>
+            <div class="pattern-info">Launch: ${timings.join(', ')}s</div>
+            <div class="pattern-info">Duration: ${durations.join(', ')}s</div>
             <button onclick="launchPattern(${index})">Launch</button>
             <button onclick="deletePattern(${index})">Delete</button>
         `;

@@ -162,90 +162,73 @@ io.on('connection', (socket) => {
 
     console.log('Launching pattern:', pattern.name);
 
-    // Group squares by timing
-    const timingGroups = {};
+    // Process each square individually with its own timing and duration
     pattern.squares.forEach(square => {
-      const timing = square.timing || 0;
-      if (!timingGroups[timing]) {
-        timingGroups[timing] = [];
-      }
-      timingGroups[timing].push(square);
-    });
-
-    // Schedule each timing group
-    Object.keys(timingGroups).forEach(timing => {
-      const delay = parseFloat(timing) * 1000;
+      const timing = parseFloat(square.timing) || 0;
+      const duration = parseFloat(square.duration) || 3;
+      const delay = timing * 1000;
 
       setTimeout(() => {
-        const squares = timingGroups[timing];
-
-        // Add unique IDs to track these specific squares
-        const squareIds = squares.map(s => `${s.row}-${s.col}-${Date.now()}-${Math.random()}`);
+        // Generate unique ID for this square instance
+        const squareId = `${square.row}-${square.col}-${Date.now()}-${Math.random()}`;
 
         // Warning phase (orange) - 1 second
-        // Add to existing active squares instead of replacing
-        const warningSquares = squares.map((s, idx) => ({
-          row: s.row,
-          col: s.col,
+        const warningSquare = {
+          row: square.row,
+          col: square.col,
           phase: 'warning',
-          id: squareIds[idx]
-        }));
+          id: squareId
+        };
 
-        gameState.activeSquares = [...gameState.activeSquares, ...warningSquares];
+        gameState.activeSquares = [...gameState.activeSquares, warningSquare];
         broadcastGameState();
 
-        // Damage phase (red) - 3 seconds
+        // Damage phase (red) - variable duration
         setTimeout(() => {
-          // Remove warning squares and add damage squares for this group
-          gameState.activeSquares = gameState.activeSquares.filter(
-            s => !squareIds.includes(s.id)
-          );
+          // Remove warning square and add damage square
+          gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
 
-          const damageSquares = squares.map((s, idx) => ({
-            row: s.row,
-            col: s.col,
+          const damageSquare = {
+            row: square.row,
+            col: square.col,
             phase: 'damage',
-            id: squareIds[idx]
-          }));
+            id: squareId
+          };
 
-          gameState.activeSquares = [...gameState.activeSquares, ...damageSquares];
+          gameState.activeSquares = [...gameState.activeSquares, damageSquare];
           broadcastGameState();
 
-          // Function to check for hits
-          const checkHits = () => {
-            squares.forEach(square => {
-              Object.keys(gameState.players).forEach(playerId => {
-                const player = gameState.players[playerId];
-                if (player && player.row === square.row && player.col === square.col) {
-                  player.hits++;
-                  console.log(`Player ${player.name} hit! Total hits: ${player.hits}`);
-                }
-              });
+          // Function to check for hits on this specific square
+          const checkHit = () => {
+            Object.keys(gameState.players).forEach(playerId => {
+              const player = gameState.players[playerId];
+              if (player && player.row === square.row && player.col === square.col) {
+                player.hits++;
+                console.log(`Player ${player.name} hit at (${square.row},${square.col})! Total hits: ${player.hits}`);
+              }
             });
             broadcastGameState();
           };
 
           // Check for hits immediately (at 0 seconds)
-          checkHits();
+          checkHit();
 
-          // Check for hits at 1 second
-          const hitCheck1 = setTimeout(() => {
-            checkHits();
-          }, 1000);
+          // Schedule hit checks every second for the duration
+          const hitCheckIntervals = [];
+          const numChecks = Math.floor(duration);
 
-          // Check for hits at 2 seconds
-          const hitCheck2 = setTimeout(() => {
-            checkHits();
-          }, 2000);
+          for (let i = 1; i < numChecks; i++) {
+            hitCheckIntervals.push(setTimeout(() => {
+              checkHit();
+            }, i * 1000));
+          }
 
-          // Clear squares after damage phase (at 3 seconds)
+          // Clear square after duration
           setTimeout(() => {
-            gameState.activeSquares = gameState.activeSquares.filter(
-              s => !squareIds.includes(s.id)
-            );
+            gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
             broadcastGameState();
-          }, 3000);
-        }, 1000);
+          }, duration * 1000);
+        }, 1000); // Warning phase is always 1 second
       }, delay);
     });
   });
