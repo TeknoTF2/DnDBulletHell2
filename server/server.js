@@ -16,7 +16,8 @@ const io = socketIo(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  maxHttpBufferSize: 5e6 // 5MB max payload (default is 1MB)
 });
 
 let gameState = {
@@ -38,8 +39,23 @@ function getNextColor() {
   return color;
 }
 
+// Lightweight broadcast - strips out images to reduce bandwidth
+function broadcastGameStateLightweight() {
+  const lightState = {
+    ...gameState,
+    backgroundImage: null,
+    players: Object.fromEntries(
+      Object.entries(gameState.players).map(([id, player]) => [
+        id,
+        { ...player, tokenImage: null }
+      ])
+    )
+  };
+  io.emit('gameState', lightState);
+}
+
 function broadcastGameState() {
-  io.emit('gameState', gameState);
+  broadcastGameStateLightweight();
 }
 
 // Movement cooldown system
@@ -68,7 +84,7 @@ io.on('connection', (socket) => {
   socket.on('joinGame', (data) => {
     const startRow = Math.floor(gameState.gridRows / 2);
     const startCol = Math.floor(gameState.gridCols / 2);
-    
+
     gameState.players[socket.id] = {
       id: socket.id,
       name: data.name,
@@ -80,9 +96,14 @@ io.on('connection', (socket) => {
       hits: 0,
       tokenImage: null
     };
-    
+
     socket.emit('playerId', socket.id);
-    broadcastGameState();
+
+    // Send FULL state to the new joiner (includes all images)
+    socket.emit('gameState', gameState);
+    // Send lightweight update to everyone else
+    broadcastGameStateLightweight();
+
     console.log('Player joined:', data.name);
   });
 
@@ -104,7 +125,11 @@ io.on('connection', (socket) => {
     const player = gameState.players[socket.id];
     if (player) {
       player.tokenImage = imageData;
-      broadcastGameState();
+      // Broadcast to everyone (new image needs to go out)
+      io.emit('playerTokenUpdate', {
+        playerId: socket.id,
+        tokenImage: imageData
+      });
     }
   });
 
@@ -134,13 +159,26 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateBackground', (imageData) => {
-    if (socket.id !== gameState.dm) {
-      console.log('Unauthorized background update attempt from:', socket.id);
-      return;
-    }
+    try {
+      if (socket.id !== gameState.dm) {
+        console.log('Unauthorized background update attempt from:', socket.id);
+        return;
+      }
 
-    gameState.backgroundImage = imageData;
-    broadcastGameState();
+      if (!imageData || imageData.length > 5 * 1024 * 1024) {
+        console.log('Background image too large or invalid');
+        socket.emit('error', 'Image too large');
+        return;
+      }
+
+      gameState.backgroundImage = imageData;
+      // Broadcast to everyone
+      io.emit('backgroundUpdate', imageData);
+      console.log('Background updated, size:', (imageData.length / 1024 / 1024).toFixed(2), 'MB');
+    } catch (error) {
+      console.error('Error updating background:', error);
+      socket.emit('error', 'Failed to update background');
+    }
   });
 
   socket.on('savePattern', (pattern) => {

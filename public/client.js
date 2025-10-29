@@ -13,6 +13,84 @@ let tokenImageCache = {}; // Cache for player token images
 let dmControlsSetup = false; // Track if DM controls have been initialized
 let playerControlsSetup = false; // Track if player controls have been initialized
 
+// Compress images before uploading
+function compressImage(file, maxWidth = 800, quality = 0.8) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// More aggressive compression for large background maps
+async function compressBackgroundImage(file) {
+    // If file is already small, use regular compression
+    if (file.size < 5 * 1024 * 1024) { // Less than 5MB
+        return compressImage(file, 1920, 0.85);
+    }
+
+    // For large files, compress more aggressively
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Max 1920px width for backgrounds
+                const maxWidth = 1920;
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Try different quality levels until under 2MB
+                let quality = 0.7;
+                let result = canvas.toDataURL('image/jpeg', quality);
+
+                // Keep reducing quality until we're under 2MB base64
+                while (result.length > 2 * 1024 * 1024 && quality > 0.3) {
+                    quality -= 0.1;
+                    result = canvas.toDataURL('image/jpeg', quality);
+                }
+
+                console.log(`Compressed from ${(file.size / 1024 / 1024).toFixed(2)}MB to ~${(result.length / 1024 / 1024).toFixed(2)}MB`);
+                resolve(result);
+            };
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+    });
+}
+
 // DOM Elements
 const connectionScreen = document.getElementById('connectionScreen');
 const gameScreen = document.getElementById('gameScreen');
@@ -57,6 +135,21 @@ socket.on('playerId', (id) => {
     playerControls.style.display = 'block';
     dmControls.style.display = 'none';
     // Setup will happen when gameState is received
+});
+
+socket.on('playerTokenUpdate', (data) => {
+    if (gameState && gameState.players[data.playerId]) {
+        gameState.players[data.playerId].tokenImage = data.tokenImage;
+        renderGame();
+    }
+});
+
+socket.on('backgroundUpdate', (imageData) => {
+    if (gameState) {
+        gameState.backgroundImage = imageData;
+        backgroundImage = null; // Reset cached image
+        renderGame();
+    }
 });
 
 // Create Game (DM)
@@ -245,63 +338,65 @@ function setupPlayerControls() {
 }
 
 // Handle background image upload
-function handleBackgroundUpload(e) {
+async function handleBackgroundUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file is an image
     if (!file.type.startsWith('image/')) {
         alert('Please select an image file');
         return;
     }
 
-    // Validate file size (max 50MB for large D&D maps)
-    if (file.size > 50 * 1024 * 1024) {
-        alert('Image too large. Please select an image under 50MB');
-        return;
-    }
+    // Show loading message
+    const originalButton = e.target;
+    originalButton.disabled = true;
+    console.log('Compressing background image... this may take a moment for large files');
 
-    console.log('Uploading background image:', file.name);
+    try {
+        const compressedImage = await compressBackgroundImage(file);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        socket.emit('updateBackground', event.target.result);
+        // Check if compressed image is still too large
+        if (compressedImage.length > 3 * 1024 * 1024) {
+            alert('Image is still too large after compression. Try a smaller image or lower resolution.');
+            originalButton.disabled = false;
+            return;
+        }
+
+        socket.emit('updateBackground', compressedImage);
         console.log('Background image uploaded successfully');
-    };
-    reader.onerror = () => {
-        alert('Error reading image file');
-    };
-    reader.readAsDataURL(file);
+        originalButton.disabled = false;
+    } catch (error) {
+        alert('Error processing image: ' + error.message);
+        console.error(error);
+        originalButton.disabled = false;
+    }
 }
 
 // Handle token image upload
-function handleTokenUpload(e) {
+async function handleTokenUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file is an image
     if (!file.type.startsWith('image/')) {
         alert('Please select an image file');
         return;
     }
 
-    // Validate file size (max 50MB for large D&D maps)
     if (file.size > 50 * 1024 * 1024) {
         alert('Image too large. Please select an image under 50MB');
         return;
     }
 
-    console.log('Uploading token image:', file.name);
+    console.log('Compressing and uploading token image:', file.name);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        socket.emit('updateTokenImage', event.target.result);
+    try {
+        const compressedImage = await compressImage(file, 400, 0.8);
+        socket.emit('updateTokenImage', compressedImage);
         console.log('Token image uploaded successfully');
-    };
-    reader.onerror = () => {
-        alert('Error reading image file');
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+        alert('Error processing image');
+        console.error(error);
+    }
 }
 
 // Save pattern
