@@ -212,15 +212,19 @@ function togglePatternSquare(row, col) {
     const existingIndex = currentPattern.findIndex(s => s.row === row && s.col === col);
 
     if (existingIndex >= 0) {
-        // If square exists, ask if they want to edit or remove
-        const action = prompt(`Square (${row}, ${col}) - Type 'remove' to delete, or press OK to edit:`, '');
-        if (action && action.toLowerCase() === 'remove') {
-            currentPattern.splice(existingIndex, 1);
-        }
-        // User can edit via the pattern squares list
+        // If square exists, remove it
+        currentPattern.splice(existingIndex, 1);
     } else {
-        // Add new square with default timing of 0 and duration of 3
-        currentPattern.push({ row, col, timing: 0, duration: 3 });
+        // Add new square with values from Quick Apply controls
+        const defaultTiming = parseFloat(document.getElementById('defaultTiming').value) || 0;
+        const defaultDuration = parseFloat(document.getElementById('defaultDuration').value) || 3;
+
+        currentPattern.push({
+            row,
+            col,
+            timing: defaultTiming,
+            duration: defaultDuration
+        });
     }
 
     renderPatternSquares();
@@ -309,6 +313,43 @@ function setupDMControls() {
         currentPattern = [];
         renderPatternSquares();
         renderGame();
+    });
+
+    // Batch edit controls
+    document.getElementById('applyBatchTiming').addEventListener('click', () => {
+        const timing = parseFloat(document.getElementById('batchTiming').value);
+        if (isNaN(timing) || timing < 0) {
+            alert('Please enter a valid timing value');
+            return;
+        }
+        if (currentPattern.length === 0) {
+            alert('No squares in pattern to edit');
+            return;
+        }
+        currentPattern.forEach(square => {
+            square.timing = timing;
+        });
+        renderPatternSquares();
+        renderGame();
+        document.getElementById('batchTiming').value = '';
+    });
+
+    document.getElementById('applyBatchDuration').addEventListener('click', () => {
+        const duration = parseFloat(document.getElementById('batchDuration').value);
+        if (isNaN(duration) || duration < 0.5 || duration > 10) {
+            alert('Please enter a valid duration value (0.5-10)');
+            return;
+        }
+        if (currentPattern.length === 0) {
+            alert('No squares in pattern to edit');
+            return;
+        }
+        currentPattern.forEach(square => {
+            square.duration = duration;
+        });
+        renderPatternSquares();
+        renderGame();
+        document.getElementById('batchDuration').value = '';
     });
 
     // Update grid size fields if gameState exists
