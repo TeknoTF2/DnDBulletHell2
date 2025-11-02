@@ -119,6 +119,22 @@
                     <div class="control-section">
                         <h3>Saved Patterns</h3>
                         <div id="savedPatternsList"></div>
+
+                        <!-- Import/Export Controls -->
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                            <div style="font-weight: bold; margin-bottom: 10px;">Pattern Library:</div>
+                            <button id="downloadPatternsBtn" style="width: 100%; margin-bottom: 8px;">
+                                📥 Download All Patterns
+                            </button>
+                            <label for="uploadPatternsInput" style="display: block; margin-bottom: 5px; font-size: 0.9em;">
+                                Upload Pattern Library:
+                            </label>
+                            <input type="file" id="uploadPatternsInput" accept=".json"
+                                   style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 6px; color: #fff; cursor: pointer;">
+                            <div class="hint" style="margin-top: 8px;">
+                                Save your patterns between sessions! Download creates a .json file you can upload later.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Player Management -->

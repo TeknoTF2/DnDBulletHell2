@@ -352,6 +352,10 @@ function setupDMControls() {
         document.getElementById('batchDuration').value = '';
     });
 
+    // Pattern import/export controls
+    document.getElementById('downloadPatternsBtn').addEventListener('click', downloadPatterns);
+    document.getElementById('uploadPatternsInput').addEventListener('change', handlePatternUpload);
+
     // Update grid size fields if gameState exists
     if (gameState) {
         document.getElementById('dmGridRows').value = gameState.gridRows;
@@ -376,6 +380,120 @@ function setupPlayerControls() {
             alert('Name update feature coming soon! Rejoin with new name for now.');
         }
     });
+}
+
+// Download all patterns as JSON file
+function downloadPatterns() {
+    if (!gameState || !gameState.savedPatterns || gameState.savedPatterns.length === 0) {
+        alert('No patterns to download. Save some patterns first!');
+        return;
+    }
+
+    // Create the data object
+    const exportData = {
+        version: '1.0',
+        exportDate: new Date().toISOString(),
+        patternCount: gameState.savedPatterns.length,
+        patterns: gameState.savedPatterns
+    };
+
+    // Convert to JSON string
+    const jsonString = JSON.stringify(exportData, null, 2);
+
+    // Create blob and download
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dnd-patterns-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    console.log(`Downloaded ${gameState.savedPatterns.length} patterns`);
+    alert(`Downloaded ${gameState.savedPatterns.length} pattern(s) successfully!`);
+}
+
+// Handle pattern file upload
+function handlePatternUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.json')) {
+        alert('Please select a .json file');
+        e.target.value = ''; // Reset input
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const importData = JSON.parse(event.target.result);
+
+            // Validate the data structure
+            if (!importData.patterns || !Array.isArray(importData.patterns)) {
+                throw new Error('Invalid pattern file format');
+            }
+
+            // Validate each pattern has required fields
+            for (const pattern of importData.patterns) {
+                if (!pattern.name || !pattern.squares || !Array.isArray(pattern.squares)) {
+                    throw new Error('Invalid pattern structure in file');
+                }
+                // Validate each square
+                for (const square of pattern.squares) {
+                    if (typeof square.row !== 'number' || typeof square.col !== 'number') {
+                        throw new Error('Invalid square data in pattern');
+                    }
+                    // Add defaults for timing/duration if missing
+                    if (typeof square.timing !== 'number') square.timing = 0;
+                    if (typeof square.duration !== 'number') square.duration = 3;
+                }
+            }
+
+            // Ask for confirmation
+            const shouldMerge = confirm(
+                `Found ${importData.patterns.length} pattern(s) in file.\n\n` +
+                `Current saved patterns: ${gameState.savedPatterns.length}\n\n` +
+                `Click OK to ADD these patterns (merge)\n` +
+                `Click Cancel to REPLACE all patterns`
+            );
+
+            if (shouldMerge) {
+                // Merge: Add imported patterns to existing ones
+                importData.patterns.forEach(pattern => {
+                    gameState.savedPatterns.push(pattern);
+                });
+                console.log(`Merged ${importData.patterns.length} patterns`);
+                alert(`Successfully added ${importData.patterns.length} pattern(s)!\nTotal patterns: ${gameState.savedPatterns.length}`);
+            } else {
+                // Replace: Clear existing and use imported
+                gameState.savedPatterns = importData.patterns;
+                console.log(`Replaced with ${importData.patterns.length} patterns`);
+                alert(`Successfully replaced patterns!\nTotal patterns: ${gameState.savedPatterns.length}`);
+            }
+
+            // Update the server and UI
+            socket.emit('importPatterns', gameState.savedPatterns);
+            updateSavedPatternsList();
+
+        } catch (error) {
+            console.error('Error importing patterns:', error);
+            alert('Error loading pattern file: ' + error.message);
+        }
+
+        // Reset the file input
+        e.target.value = '';
+    };
+
+    reader.onerror = () => {
+        alert('Error reading file');
+        e.target.value = '';
+    };
+
+    reader.readAsText(file);
 }
 
 // Handle background image upload

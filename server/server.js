@@ -192,6 +192,22 @@ io.on('connection', (socket) => {
     console.log('Pattern saved:', pattern.name);
   });
 
+  socket.on('importPatterns', (patterns) => {
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized pattern import attempt from:', socket.id);
+      return;
+    }
+
+    if (!Array.isArray(patterns)) {
+      console.log('Invalid patterns data received');
+      return;
+    }
+
+    gameState.savedPatterns = patterns;
+    broadcastGameState();
+    console.log(`Patterns imported: ${patterns.length} pattern(s)`);
+  });
+
   socket.on('launchPattern', (pattern) => {
     if (socket.id !== gameState.dm) {
       console.log('Unauthorized pattern launch attempt from:', socket.id);
