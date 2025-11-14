@@ -16,7 +16,8 @@ const io = socketIo(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  maxHttpBufferSize: 5e6 // 5MB max payload (default is 1MB)
 });
 
 let gameState = {
@@ -38,8 +39,23 @@ function getNextColor() {
   return color;
 }
 
+// Lightweight broadcast - strips out images to reduce bandwidth
+function broadcastGameStateLightweight() {
+  const lightState = {
+    ...gameState,
+    backgroundImage: null,
+    players: Object.fromEntries(
+      Object.entries(gameState.players).map(([id, player]) => [
+        id,
+        { ...player, tokenImage: null }
+      ])
+    )
+  };
+  io.emit('gameState', lightState);
+}
+
 function broadcastGameState() {
-  io.emit('gameState', gameState);
+  broadcastGameStateLightweight();
 }
 
 // Movement cooldown system
@@ -68,7 +84,7 @@ io.on('connection', (socket) => {
   socket.on('joinGame', (data) => {
     const startRow = Math.floor(gameState.gridRows / 2);
     const startCol = Math.floor(gameState.gridCols / 2);
-    
+
     gameState.players[socket.id] = {
       id: socket.id,
       name: data.name,
@@ -80,9 +96,14 @@ io.on('connection', (socket) => {
       hits: 0,
       tokenImage: null
     };
-    
+
     socket.emit('playerId', socket.id);
-    broadcastGameState();
+
+    // Send FULL state to the new joiner (includes all images)
+    socket.emit('gameState', gameState);
+    // Send lightweight update to everyone else
+    broadcastGameStateLightweight();
+
     console.log('Player joined:', data.name);
   });
 
@@ -104,7 +125,11 @@ io.on('connection', (socket) => {
     const player = gameState.players[socket.id];
     if (player) {
       player.tokenImage = imageData;
-      broadcastGameState();
+      // Broadcast to everyone (new image needs to go out)
+      io.emit('playerTokenUpdate', {
+        playerId: socket.id,
+        tokenImage: imageData
+      });
     }
   });
 
@@ -134,13 +159,26 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateBackground', (imageData) => {
-    if (socket.id !== gameState.dm) {
-      console.log('Unauthorized background update attempt from:', socket.id);
-      return;
-    }
+    try {
+      if (socket.id !== gameState.dm) {
+        console.log('Unauthorized background update attempt from:', socket.id);
+        return;
+      }
 
-    gameState.backgroundImage = imageData;
-    broadcastGameState();
+      if (!imageData || imageData.length > 5 * 1024 * 1024) {
+        console.log('Background image too large or invalid');
+        socket.emit('error', 'Image too large');
+        return;
+      }
+
+      gameState.backgroundImage = imageData;
+      // Broadcast to everyone
+      io.emit('backgroundUpdate', imageData);
+      console.log('Background updated, size:', (imageData.length / 1024 / 1024).toFixed(2), 'MB');
+    } catch (error) {
+      console.error('Error updating background:', error);
+      socket.emit('error', 'Failed to update background');
+    }
   });
 
   socket.on('savePattern', (pattern) => {
@@ -154,6 +192,22 @@ io.on('connection', (socket) => {
     console.log('Pattern saved:', pattern.name);
   });
 
+  socket.on('importPatterns', (patterns) => {
+    if (socket.id !== gameState.dm) {
+      console.log('Unauthorized pattern import attempt from:', socket.id);
+      return;
+    }
+
+    if (!Array.isArray(patterns)) {
+      console.log('Invalid patterns data received');
+      return;
+    }
+
+    gameState.savedPatterns = patterns;
+    broadcastGameState();
+    console.log(`Patterns imported: ${patterns.length} pattern(s)`);
+  });
+
   socket.on('launchPattern', (pattern) => {
     if (socket.id !== gameState.dm) {
       console.log('Unauthorized pattern launch attempt from:', socket.id);
@@ -162,74 +216,73 @@ io.on('connection', (socket) => {
 
     console.log('Launching pattern:', pattern.name);
 
-    // Group squares by timing
-    const timingGroups = {};
+    // Process each square individually with its own timing and duration
     pattern.squares.forEach(square => {
-      const timing = square.timing || 0;
-      if (!timingGroups[timing]) {
-        timingGroups[timing] = [];
-      }
-      timingGroups[timing].push(square);
-    });
-
-    // Schedule each timing group
-    Object.keys(timingGroups).forEach(timing => {
-      const delay = parseFloat(timing) * 1000;
+      const timing = parseFloat(square.timing) || 0;
+      const duration = parseFloat(square.duration) || 3;
+      const delay = timing * 1000;
 
       setTimeout(() => {
-        const squares = timingGroups[timing];
-
-        // Add unique IDs to track these specific squares
-        const squareIds = squares.map(s => `${s.row}-${s.col}-${Date.now()}-${Math.random()}`);
+        // Generate unique ID for this square instance
+        const squareId = `${square.row}-${square.col}-${Date.now()}-${Math.random()}`;
 
         // Warning phase (orange) - 1 second
-        // Add to existing active squares instead of replacing
-        const warningSquares = squares.map((s, idx) => ({
-          row: s.row,
-          col: s.col,
+        const warningSquare = {
+          row: square.row,
+          col: square.col,
           phase: 'warning',
-          id: squareIds[idx]
-        }));
+          id: squareId
+        };
 
-        gameState.activeSquares = [...gameState.activeSquares, ...warningSquares];
+        gameState.activeSquares = [...gameState.activeSquares, warningSquare];
         broadcastGameState();
 
-        // Damage phase (red) - 3 seconds
+        // Damage phase (red) - variable duration
         setTimeout(() => {
-          // Remove warning squares and add damage squares for this group
-          gameState.activeSquares = gameState.activeSquares.filter(
-            s => !squareIds.includes(s.id)
-          );
+          // Remove warning square and add damage square
+          gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
 
-          const damageSquares = squares.map((s, idx) => ({
-            row: s.row,
-            col: s.col,
+          const damageSquare = {
+            row: square.row,
+            col: square.col,
             phase: 'damage',
-            id: squareIds[idx]
-          }));
+            id: squareId
+          };
 
-          gameState.activeSquares = [...gameState.activeSquares, ...damageSquares];
-
-          // Check for hits
-          squares.forEach(square => {
-            Object.keys(gameState.players).forEach(playerId => {
-              const player = gameState.players[playerId];
-              if (player.row === square.row && player.col === square.col) {
-                player.hits++;
-              }
-            });
-          });
-
+          gameState.activeSquares = [...gameState.activeSquares, damageSquare];
           broadcastGameState();
 
-          // Clear squares after damage phase
-          setTimeout(() => {
-            gameState.activeSquares = gameState.activeSquares.filter(
-              s => !squareIds.includes(s.id)
-            );
+          // Function to check for hits on this specific square
+          const checkHit = () => {
+            Object.keys(gameState.players).forEach(playerId => {
+              const player = gameState.players[playerId];
+              if (player && player.row === square.row && player.col === square.col) {
+                player.hits++;
+                console.log(`Player ${player.name} hit at (${square.row},${square.col})! Total hits: ${player.hits}`);
+              }
+            });
             broadcastGameState();
-          }, 3000);
-        }, 1000);
+          };
+
+          // Check for hits immediately (at 0 seconds)
+          checkHit();
+
+          // Schedule hit checks every second for the duration
+          const hitCheckIntervals = [];
+          const numChecks = Math.floor(duration);
+
+          for (let i = 1; i < numChecks; i++) {
+            hitCheckIntervals.push(setTimeout(() => {
+              checkHit();
+            }, i * 1000));
+          }
+
+          // Clear square after duration
+          setTimeout(() => {
+            gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
+            broadcastGameState();
+          }, duration * 1000);
+        }, 1000); // Warning phase is always 1 second
       }, delay);
     });
   });

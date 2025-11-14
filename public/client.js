@@ -10,6 +10,86 @@ let canvas, ctx;
 let cellSize = 50;
 let backgroundImage = null;
 let tokenImageCache = {}; // Cache for player token images
+let dmControlsSetup = false; // Track if DM controls have been initialized
+let playerControlsSetup = false; // Track if player controls have been initialized
+
+// Compress images before uploading
+function compressImage(file, maxWidth = 800, quality = 0.8) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// More aggressive compression for large background maps
+async function compressBackgroundImage(file) {
+    // If file is already small, use regular compression
+    if (file.size < 5 * 1024 * 1024) { // Less than 5MB
+        return compressImage(file, 1920, 0.85);
+    }
+
+    // For large files, compress more aggressively
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Max 1920px width for backgrounds
+                const maxWidth = 1920;
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Try different quality levels until under 2MB
+                let quality = 0.7;
+                let result = canvas.toDataURL('image/jpeg', quality);
+
+                // Keep reducing quality until we're under 2MB base64
+                while (result.length > 2 * 1024 * 1024 && quality > 0.3) {
+                    quality -= 0.1;
+                    result = canvas.toDataURL('image/jpeg', quality);
+                }
+
+                console.log(`Compressed from ${(file.size / 1024 / 1024).toFixed(2)}MB to ~${(result.length / 1024 / 1024).toFixed(2)}MB`);
+                resolve(result);
+            };
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+    });
+}
 
 // DOM Elements
 const connectionScreen = document.getElementById('connectionScreen');
@@ -46,7 +126,7 @@ socket.on('dmStatus', (status) => {
     if (isDM) {
         dmControls.style.display = 'block';
         playerControls.style.display = 'none';
-        setupDMControls();
+        // Setup will happen when gameState is received
     }
 });
 
@@ -54,7 +134,22 @@ socket.on('playerId', (id) => {
     myPlayerId = id;
     playerControls.style.display = 'block';
     dmControls.style.display = 'none';
-    setupPlayerControls();
+    // Setup will happen when gameState is received
+});
+
+socket.on('playerTokenUpdate', (data) => {
+    if (gameState && gameState.players[data.playerId]) {
+        gameState.players[data.playerId].tokenImage = data.tokenImage;
+        renderGame();
+    }
+});
+
+socket.on('backgroundUpdate', (imageData) => {
+    if (gameState) {
+        gameState.backgroundImage = imageData;
+        backgroundImage = null; // Reset cached image
+        renderGame();
+    }
 });
 
 // Create Game (DM)
@@ -117,14 +212,19 @@ function togglePatternSquare(row, col) {
     const existingIndex = currentPattern.findIndex(s => s.row === row && s.col === col);
 
     if (existingIndex >= 0) {
-        // If square exists, prompt for timing
-        const timing = prompt(`Set timing for square (${row}, ${col}) in seconds:`, currentPattern[existingIndex].timing || 0);
-        if (timing !== null) {
-            currentPattern[existingIndex].timing = parseFloat(timing);
-        }
+        // If square exists, remove it
+        currentPattern.splice(existingIndex, 1);
     } else {
-        // Add new square with default timing of 0
-        currentPattern.push({ row, col, timing: 0 });
+        // Add new square with values from Quick Apply controls
+        const defaultTiming = parseFloat(document.getElementById('defaultTiming').value) || 0;
+        const defaultDuration = parseFloat(document.getElementById('defaultDuration').value) || 3;
+
+        currentPattern.push({
+            row,
+            col,
+            timing: defaultTiming,
+            duration: defaultDuration
+        });
     }
 
     renderPatternSquares();
@@ -142,10 +242,26 @@ function renderPatternSquares() {
         const div = document.createElement('div');
         div.className = 'pattern-square-item';
         div.innerHTML = `
-            <span>(${square.row}, ${square.col})</span>
-            <input type="number" value="${square.timing}" step="0.1" min="0"
-                   onchange="updateSquareTiming(${index}, this.value)">
-            <button onclick="removePatternSquare(${index})">Remove</button>
+            <div style="display: flex; flex-direction: column; width: 100%; gap: 5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><strong>(${square.row}, ${square.col})</strong></span>
+                    <button onclick="removePatternSquare(${index})" style="margin: 0;">Remove</button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.85em;">
+                    <label style="margin: 0;">Launch:</label>
+                    <input type="number" value="${square.timing || 0}" step="0.1" min="0"
+                           onchange="updateSquareTiming(${index}, this.value)"
+                           style="width: 60px; padding: 2px 4px;">
+                    <span>s</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.85em;">
+                    <label style="margin: 0;">Duration:</label>
+                    <input type="number" value="${square.duration || 3}" step="0.5" min="0.5" max="10"
+                           onchange="updateSquareDuration(${index}, this.value)"
+                           style="width: 60px; padding: 2px 4px;">
+                    <span>s</span>
+                </div>
+            </div>
         `;
         container.appendChild(div);
     });
@@ -154,6 +270,17 @@ function renderPatternSquares() {
 // Update square timing
 window.updateSquareTiming = function(index, value) {
     currentPattern[index].timing = parseFloat(value) || 0;
+};
+
+// Update square duration
+window.updateSquareDuration = function(index, value) {
+    currentPattern[index].duration = parseFloat(value) || 3;
+    if (currentPattern[index].duration < 0.5) {
+        currentPattern[index].duration = 0.5;
+    }
+    if (currentPattern[index].duration > 10) {
+        currentPattern[index].duration = 10;
+    }
 };
 
 // Remove pattern square
@@ -165,52 +292,89 @@ window.removePatternSquare = function(index) {
 
 // Setup DM Controls
 function setupDMControls() {
-    if (!gameState) return;
+    if (dmControlsSetup) return; // Only setup once
+    dmControlsSetup = true;
 
-    document.getElementById('dmGridRows').value = gameState.gridRows;
-    document.getElementById('dmGridCols').value = gameState.gridCols;
+    console.log('Setting up DM controls');
 
-    // Remove existing listeners by cloning elements (prevents duplicate listeners)
-    const updateGridBtn = document.getElementById('updateGridBtn');
-    const newUpdateBtn = updateGridBtn.cloneNode(true);
-    updateGridBtn.parentNode.replaceChild(newUpdateBtn, updateGridBtn);
-    newUpdateBtn.addEventListener('click', () => {
+    // Grid size controls
+    document.getElementById('updateGridBtn').addEventListener('click', () => {
         const rows = parseInt(document.getElementById('dmGridRows').value);
         const cols = parseInt(document.getElementById('dmGridCols').value);
         socket.emit('updateGridSize', { rows, cols });
     });
 
-    const bgImageUpload = document.getElementById('bgImageUpload');
-    const newBgUpload = bgImageUpload.cloneNode(true);
-    bgImageUpload.parentNode.replaceChild(newBgUpload, bgImageUpload);
-    newBgUpload.addEventListener('change', handleBackgroundUpload);
+    // Background image upload
+    document.getElementById('bgImageUpload').addEventListener('change', handleBackgroundUpload);
 
-    const savePatternBtn = document.getElementById('savePatternBtn');
-    const newSaveBtn = savePatternBtn.cloneNode(true);
-    savePatternBtn.parentNode.replaceChild(newSaveBtn, savePatternBtn);
-    newSaveBtn.addEventListener('click', savePattern);
-
-    const clearPatternBtn = document.getElementById('clearPatternBtn');
-    const newClearBtn = clearPatternBtn.cloneNode(true);
-    clearPatternBtn.parentNode.replaceChild(newClearBtn, clearPatternBtn);
-    newClearBtn.addEventListener('click', () => {
+    // Pattern controls
+    document.getElementById('savePatternBtn').addEventListener('click', savePattern);
+    document.getElementById('clearPatternBtn').addEventListener('click', () => {
         currentPattern = [];
         renderPatternSquares();
         renderGame();
     });
+
+    // Batch edit controls
+    document.getElementById('applyBatchTiming').addEventListener('click', () => {
+        const timing = parseFloat(document.getElementById('batchTiming').value);
+        if (isNaN(timing) || timing < 0) {
+            alert('Please enter a valid timing value');
+            return;
+        }
+        if (currentPattern.length === 0) {
+            alert('No squares in pattern to edit');
+            return;
+        }
+        currentPattern.forEach(square => {
+            square.timing = timing;
+        });
+        renderPatternSquares();
+        renderGame();
+        document.getElementById('batchTiming').value = '';
+    });
+
+    document.getElementById('applyBatchDuration').addEventListener('click', () => {
+        const duration = parseFloat(document.getElementById('batchDuration').value);
+        if (isNaN(duration) || duration < 0.5 || duration > 10) {
+            alert('Please enter a valid duration value (0.5-10)');
+            return;
+        }
+        if (currentPattern.length === 0) {
+            alert('No squares in pattern to edit');
+            return;
+        }
+        currentPattern.forEach(square => {
+            square.duration = duration;
+        });
+        renderPatternSquares();
+        renderGame();
+        document.getElementById('batchDuration').value = '';
+    });
+
+    // Pattern import/export controls
+    document.getElementById('downloadPatternsBtn').addEventListener('click', downloadPatterns);
+    document.getElementById('uploadPatternsInput').addEventListener('change', handlePatternUpload);
+
+    // Update grid size fields if gameState exists
+    if (gameState) {
+        document.getElementById('dmGridRows').value = gameState.gridRows;
+        document.getElementById('dmGridCols').value = gameState.gridCols;
+    }
 }
 
 // Setup Player Controls
 function setupPlayerControls() {
-    const tokenImageUpload = document.getElementById('tokenImageUpload');
-    const newTokenUpload = tokenImageUpload.cloneNode(true);
-    tokenImageUpload.parentNode.replaceChild(newTokenUpload, tokenImageUpload);
-    newTokenUpload.addEventListener('change', handleTokenUpload);
+    if (playerControlsSetup) return; // Only setup once
+    playerControlsSetup = true;
 
-    const updateNameBtn = document.getElementById('updateNameBtn');
-    const newNameBtn = updateNameBtn.cloneNode(true);
-    updateNameBtn.parentNode.replaceChild(newNameBtn, updateNameBtn);
-    newNameBtn.addEventListener('click', () => {
+    console.log('Setting up player controls');
+
+    // Token image upload
+    document.getElementById('tokenImageUpload').addEventListener('change', handleTokenUpload);
+
+    // Name update (future feature)
+    document.getElementById('updateNameBtn').addEventListener('click', () => {
         const newName = document.getElementById('playerNameInput').value.trim();
         if (newName) {
             alert('Name update feature coming soon! Rejoin with new name for now.');
@@ -218,64 +382,180 @@ function setupPlayerControls() {
     });
 }
 
-// Handle background image upload
-function handleBackgroundUpload(e) {
+// Download all patterns as JSON file
+function downloadPatterns() {
+    if (!gameState || !gameState.savedPatterns || gameState.savedPatterns.length === 0) {
+        alert('No patterns to download. Save some patterns first!');
+        return;
+    }
+
+    // Create the data object
+    const exportData = {
+        version: '1.0',
+        exportDate: new Date().toISOString(),
+        patternCount: gameState.savedPatterns.length,
+        patterns: gameState.savedPatterns
+    };
+
+    // Convert to JSON string
+    const jsonString = JSON.stringify(exportData, null, 2);
+
+    // Create blob and download
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dnd-patterns-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    console.log(`Downloaded ${gameState.savedPatterns.length} patterns`);
+    alert(`Downloaded ${gameState.savedPatterns.length} pattern(s) successfully!`);
+}
+
+// Handle pattern file upload
+function handlePatternUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file is an image
+    // Validate file type
+    if (!file.name.endsWith('.json')) {
+        alert('Please select a .json file');
+        e.target.value = ''; // Reset input
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const importData = JSON.parse(event.target.result);
+
+            // Validate the data structure
+            if (!importData.patterns || !Array.isArray(importData.patterns)) {
+                throw new Error('Invalid pattern file format');
+            }
+
+            // Validate each pattern has required fields
+            for (const pattern of importData.patterns) {
+                if (!pattern.name || !pattern.squares || !Array.isArray(pattern.squares)) {
+                    throw new Error('Invalid pattern structure in file');
+                }
+                // Validate each square
+                for (const square of pattern.squares) {
+                    if (typeof square.row !== 'number' || typeof square.col !== 'number') {
+                        throw new Error('Invalid square data in pattern');
+                    }
+                    // Add defaults for timing/duration if missing
+                    if (typeof square.timing !== 'number') square.timing = 0;
+                    if (typeof square.duration !== 'number') square.duration = 3;
+                }
+            }
+
+            // Ask for confirmation
+            const shouldMerge = confirm(
+                `Found ${importData.patterns.length} pattern(s) in file.\n\n` +
+                `Current saved patterns: ${gameState.savedPatterns.length}\n\n` +
+                `Click OK to ADD these patterns (merge)\n` +
+                `Click Cancel to REPLACE all patterns`
+            );
+
+            if (shouldMerge) {
+                // Merge: Add imported patterns to existing ones
+                importData.patterns.forEach(pattern => {
+                    gameState.savedPatterns.push(pattern);
+                });
+                console.log(`Merged ${importData.patterns.length} patterns`);
+                alert(`Successfully added ${importData.patterns.length} pattern(s)!\nTotal patterns: ${gameState.savedPatterns.length}`);
+            } else {
+                // Replace: Clear existing and use imported
+                gameState.savedPatterns = importData.patterns;
+                console.log(`Replaced with ${importData.patterns.length} patterns`);
+                alert(`Successfully replaced patterns!\nTotal patterns: ${gameState.savedPatterns.length}`);
+            }
+
+            // Update the server and UI
+            socket.emit('importPatterns', gameState.savedPatterns);
+            updateSavedPatternsList();
+
+        } catch (error) {
+            console.error('Error importing patterns:', error);
+            alert('Error loading pattern file: ' + error.message);
+        }
+
+        // Reset the file input
+        e.target.value = '';
+    };
+
+    reader.onerror = () => {
+        alert('Error reading file');
+        e.target.value = '';
+    };
+
+    reader.readAsText(file);
+}
+
+// Handle background image upload
+async function handleBackgroundUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
     if (!file.type.startsWith('image/')) {
         alert('Please select an image file');
         return;
     }
 
-    // Validate file size (max 50MB for large D&D maps)
-    if (file.size > 50 * 1024 * 1024) {
-        alert('Image too large. Please select an image under 50MB');
-        return;
-    }
+    // Show loading message
+    const originalButton = e.target;
+    originalButton.disabled = true;
+    console.log('Compressing background image... this may take a moment for large files');
 
-    console.log('Uploading background image:', file.name);
+    try {
+        const compressedImage = await compressBackgroundImage(file);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        socket.emit('updateBackground', event.target.result);
+        // Check if compressed image is still too large
+        if (compressedImage.length > 3 * 1024 * 1024) {
+            alert('Image is still too large after compression. Try a smaller image or lower resolution.');
+            originalButton.disabled = false;
+            return;
+        }
+
+        socket.emit('updateBackground', compressedImage);
         console.log('Background image uploaded successfully');
-    };
-    reader.onerror = () => {
-        alert('Error reading image file');
-    };
-    reader.readAsDataURL(file);
+        originalButton.disabled = false;
+    } catch (error) {
+        alert('Error processing image: ' + error.message);
+        console.error(error);
+        originalButton.disabled = false;
+    }
 }
 
 // Handle token image upload
-function handleTokenUpload(e) {
+async function handleTokenUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file is an image
     if (!file.type.startsWith('image/')) {
         alert('Please select an image file');
         return;
     }
 
-    // Validate file size (max 50MB for large D&D maps)
     if (file.size > 50 * 1024 * 1024) {
         alert('Image too large. Please select an image under 50MB');
         return;
     }
 
-    console.log('Uploading token image:', file.name);
+    console.log('Compressing and uploading token image:', file.name);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        socket.emit('updateTokenImage', event.target.result);
+    try {
+        const compressedImage = await compressImage(file, 400, 0.8);
+        socket.emit('updateTokenImage', compressedImage);
         console.log('Token image uploaded successfully');
-    };
-    reader.onerror = () => {
-        alert('Error reading image file');
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+        alert('Error processing image');
+        console.error(error);
+    }
 }
 
 // Save pattern
@@ -342,6 +622,13 @@ function handleKeyPress(e) {
 // Render the game
 function renderGame() {
     if (!gameState || !canvas || !ctx) return;
+
+    // Setup controls once we have gameState
+    if (isDM) {
+        setupDMControls();
+    } else if (myPlayerId) {
+        setupPlayerControls();
+    }
 
     // Calculate canvas size
     const maxWidth = window.innerWidth - (isDM || myPlayerId ? 600 : 300);
@@ -413,12 +700,21 @@ function renderGame() {
             ctx.fillStyle = 'rgba(255, 255, 0, 0.3)'; // Yellow preview
             ctx.fillRect(x, y, cellSize, cellSize);
 
-            // Draw timing label
+            // Draw timing and duration labels
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 14px Arial';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.font = 'bold 11px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`${square.timing}s`, x + cellSize / 2, y + cellSize / 2);
+
+            // Draw timing (when it launches)
+            ctx.strokeText(`@${square.timing}s`, x + cellSize / 2, y + cellSize / 2 - 8);
+            ctx.fillText(`@${square.timing}s`, x + cellSize / 2, y + cellSize / 2 - 8);
+
+            // Draw duration (how long it lasts)
+            ctx.strokeText(`${square.duration}s`, x + cellSize / 2, y + cellSize / 2 + 8);
+            ctx.fillText(`${square.duration}s`, x + cellSize / 2, y + cellSize / 2 + 8);
         });
     }
 
@@ -509,12 +805,14 @@ function updateSavedPatternsList() {
         const div = document.createElement('div');
         div.className = 'pattern-item';
 
-        const timings = pattern.squares.map(s => s.timing).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+        const timings = pattern.squares.map(s => s.timing || 0).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+        const durations = pattern.squares.map(s => s.duration || 3).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
 
         div.innerHTML = `
             <div class="pattern-name">${pattern.name}</div>
             <div class="pattern-info">${pattern.squares.length} squares</div>
-            <div class="pattern-info">Timings: ${timings.join(', ')}s</div>
+            <div class="pattern-info">Launch: ${timings.join(', ')}s</div>
+            <div class="pattern-info">Duration: ${durations.join(', ')}s</div>
             <button onclick="launchPattern(${index})">Launch</button>
             <button onclick="deletePattern(${index})">Delete</button>
         `;

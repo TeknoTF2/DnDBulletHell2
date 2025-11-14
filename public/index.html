@@ -72,18 +72,69 @@
                     <!-- Pattern Editor -->
                     <div class="control-section">
                         <h3>Pattern Editor</h3>
+
+                        <!-- Quick Apply Mode -->
+                        <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                            <div style="font-weight: bold; margin-bottom: 8px;">Quick Apply (for new squares):</div>
+                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 5px;">
+                                <label style="margin: 0; width: 70px;">Launch:</label>
+                                <input type="number" id="defaultTiming" value="0" step="0.1" min="0"
+                                       style="width: 60px; padding: 4px;">
+                                <span>s</span>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <label style="margin: 0; width: 70px;">Duration:</label>
+                                <input type="number" id="defaultDuration" value="3" step="0.5" min="0.5" max="10"
+                                       style="width: 60px; padding: 4px;">
+                                <span>s</span>
+                            </div>
+                        </div>
+
+                        <!-- Current Pattern Squares -->
                         <div id="patternSquares"></div>
+
+                        <!-- Batch Edit -->
+                        <div style="background: rgba(255,200,0,0.1); padding: 10px; border-radius: 6px; margin-top: 10px; margin-bottom: 10px;">
+                            <div style="font-weight: bold; margin-bottom: 8px;">Batch Edit All Squares:</div>
+                            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+                                <input type="number" id="batchTiming" placeholder="Launch (s)" step="0.1" min="0"
+                                       style="flex: 1; padding: 4px;">
+                                <button id="applyBatchTiming" style="padding: 4px 8px; margin: 0;">Set All Launch</button>
+                            </div>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="number" id="batchDuration" placeholder="Duration (s)" step="0.5" min="0.5" max="10"
+                                       style="flex: 1; padding: 4px;">
+                                <button id="applyBatchDuration" style="padding: 4px 8px; margin: 0;">Set All Duration</button>
+                            </div>
+                        </div>
+
                         <label>Pattern Name:</label>
                         <input type="text" id="patternName" placeholder="Pattern name">
                         <button id="savePatternBtn">Save Pattern</button>
                         <button id="clearPatternBtn">Clear</button>
-                        <div class="hint">Click grid squares to add to pattern. Click square again to set timing.</div>
+                        <div class="hint">Click grid squares to add with Quick Apply values. Use Batch Edit to change all at once.</div>
                     </div>
 
                     <!-- Saved Patterns -->
                     <div class="control-section">
                         <h3>Saved Patterns</h3>
                         <div id="savedPatternsList"></div>
+
+                        <!-- Import/Export Controls -->
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                            <div style="font-weight: bold; margin-bottom: 10px;">Pattern Library:</div>
+                            <button id="downloadPatternsBtn" style="width: 100%; margin-bottom: 8px;">
+                                📥 Download All Patterns
+                            </button>
+                            <label for="uploadPatternsInput" style="display: block; margin-bottom: 5px; font-size: 0.9em;">
+                                Upload Pattern Library:
+                            </label>
+                            <input type="file" id="uploadPatternsInput" accept=".json"
+                                   style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 6px; color: #fff; cursor: pointer;">
+                            <div class="hint" style="margin-top: 8px;">
+                                Save your patterns between sessions! Download creates a .json file you can upload later.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Player Management -->
