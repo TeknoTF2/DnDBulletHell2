@@ -218,11 +218,14 @@ function togglePatternSquare(row, col) {
         // Add new square with values from Quick Apply controls
         const defaultTiming = parseFloat(document.getElementById('defaultTiming').value) || 0;
         const defaultDuration = parseFloat(document.getElementById('defaultDuration').value) || 3;
+        const defaultWarningEl = document.getElementById('defaultWarning');
+        const defaultWarning = defaultWarningEl ? (parseFloat(defaultWarningEl.value) || 1) : 1;
 
         currentPattern.push({
             row,
             col,
             timing: defaultTiming,
+            warning: defaultWarning,
             duration: defaultDuration
         });
     }
@@ -255,6 +258,13 @@ function renderPatternSquares() {
                     <span>s</span>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center; font-size: 0.85em;">
+                    <label style="margin: 0;">Warning:</label>
+                    <input type="number" value="${square.warning != null ? square.warning : 1}" step="0.1" min="0" max="10"
+                           onchange="updateSquareWarning(${index}, this.value)"
+                           style="width: 60px; padding: 2px 4px;">
+                    <span>s</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.85em;">
                     <label style="margin: 0;">Duration:</label>
                     <input type="number" value="${square.duration || 3}" step="0.5" min="0.5" max="10"
                            onchange="updateSquareDuration(${index}, this.value)"
@@ -281,6 +291,14 @@ window.updateSquareDuration = function(index, value) {
     if (currentPattern[index].duration > 10) {
         currentPattern[index].duration = 10;
     }
+};
+
+// Update square warning time
+window.updateSquareWarning = function(index, value) {
+    let warning = parseFloat(value);
+    if (isNaN(warning) || warning < 0) warning = 1;
+    if (warning > 10) warning = 10;
+    currentPattern[index].warning = warning;
 };
 
 // Remove pattern square
@@ -350,6 +368,24 @@ function setupDMControls() {
         renderPatternSquares();
         renderGame();
         document.getElementById('batchDuration').value = '';
+    });
+
+    document.getElementById('applyBatchWarning').addEventListener('click', () => {
+        const warning = parseFloat(document.getElementById('batchWarning').value);
+        if (isNaN(warning) || warning < 0 || warning > 10) {
+            alert('Please enter a valid warning value (0-10)');
+            return;
+        }
+        if (currentPattern.length === 0) {
+            alert('No squares in pattern to edit');
+            return;
+        }
+        currentPattern.forEach(square => {
+            square.warning = warning;
+        });
+        renderPatternSquares();
+        renderGame();
+        document.getElementById('batchWarning').value = '';
     });
 
     // Pattern import/export controls
@@ -447,8 +483,9 @@ function handlePatternUpload(e) {
                     if (typeof square.row !== 'number' || typeof square.col !== 'number') {
                         throw new Error('Invalid square data in pattern');
                     }
-                    // Add defaults for timing/duration if missing
+                    // Add defaults for timing/warning/duration if missing
                     if (typeof square.timing !== 'number') square.timing = 0;
+                    if (typeof square.warning !== 'number') square.warning = 1;
                     if (typeof square.duration !== 'number') square.duration = 3;
                 }
             }
@@ -806,12 +843,14 @@ function updateSavedPatternsList() {
         div.className = 'pattern-item';
 
         const timings = pattern.squares.map(s => s.timing || 0).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+        const warnings = pattern.squares.map(s => typeof s.warning === 'number' ? s.warning : 1).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
         const durations = pattern.squares.map(s => s.duration || 3).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
 
         div.innerHTML = `
             <div class="pattern-name">${pattern.name}</div>
             <div class="pattern-info">${pattern.squares.length} squares</div>
             <div class="pattern-info">Launch: ${timings.join(', ')}s</div>
+            <div class="pattern-info">Warning: ${warnings.join(', ')}s</div>
             <div class="pattern-info">Duration: ${durations.join(', ')}s</div>
             <button onclick="launchPattern(${index})">Launch</button>
             <button onclick="deletePattern(${index})">Delete</button>

@@ -216,10 +216,11 @@ io.on('connection', (socket) => {
 
     console.log('Launching pattern:', pattern.name);
 
-    // Process each square individually with its own timing and duration
+    // Process each square individually with its own timing, warning, and duration
     pattern.squares.forEach(square => {
       const timing = parseFloat(square.timing) || 0;
       const duration = parseFloat(square.duration) || 3;
+      const warning = typeof square.warning === 'number' ? square.warning : (parseFloat(square.warning) || 1);
       const delay = timing * 1000;
 
       setTimeout(() => {
@@ -282,7 +283,7 @@ io.on('connection', (socket) => {
             gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
             broadcastGameState();
           }, duration * 1000);
-        }, 1000); // Warning phase is always 1 second
+        }, warning * 1000); // Warning phase duration (per-square, defaults to 1s)
       }, delay);
     });
   });
