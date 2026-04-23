@@ -54,19 +54,33 @@ function broadcastGameStateLightweight() {
   io.emit('gameState', lightState);
 }
 
+// Coalesce broadcasts: callers mark the state dirty and a fixed-rate
+// flusher emits at most once per tick. Keeps bursty pattern launches
+// from producing hundreds of emits per second.
+let stateDirty = false;
 function broadcastGameState() {
-  broadcastGameStateLightweight();
+  stateDirty = true;
 }
+
+const BROADCAST_TICK_MS = 50;
+setInterval(() => {
+  if (stateDirty) {
+    stateDirty = false;
+    broadcastGameStateLightweight();
+  }
+}, BROADCAST_TICK_MS);
 
 // Movement cooldown system
 setInterval(() => {
+  let regenerated = false;
   Object.keys(gameState.players).forEach(playerId => {
     const player = gameState.players[playerId];
     if (player.speedRemaining < player.speed) {
       player.speedRemaining = player.speed;
+      regenerated = true;
     }
   });
-  broadcastGameState();
+  if (regenerated) broadcastGameState();
 }, 6000);
 
 io.on('connection', (socket) => {
@@ -227,60 +241,59 @@ io.on('connection', (socket) => {
         // Generate unique ID for this square instance
         const squareId = `${square.row}-${square.col}-${Date.now()}-${Math.random()}`;
 
-        // Warning phase (orange) - 1 second
-        const warningSquare = {
+        // Warning phase (orange)
+        gameState.activeSquares.push({
           row: square.row,
           col: square.col,
           phase: 'warning',
           id: squareId
-        };
-
-        gameState.activeSquares = [...gameState.activeSquares, warningSquare];
+        });
         broadcastGameState();
 
         // Damage phase (red) - variable duration
         setTimeout(() => {
-          // Remove warning square and add damage square
-          gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
-
+          // Transition warning -> damage in place
+          const idx = gameState.activeSquares.findIndex(s => s.id === squareId);
           const damageSquare = {
             row: square.row,
             col: square.col,
             phase: 'damage',
             id: squareId
           };
-
-          gameState.activeSquares = [...gameState.activeSquares, damageSquare];
+          if (idx !== -1) {
+            gameState.activeSquares[idx] = damageSquare;
+          } else {
+            gameState.activeSquares.push(damageSquare);
+          }
           broadcastGameState();
 
-          // Function to check for hits on this specific square
+          // Only broadcast when someone actually got hit
           const checkHit = () => {
+            let anyHit = false;
             Object.keys(gameState.players).forEach(playerId => {
               const player = gameState.players[playerId];
               if (player && player.row === square.row && player.col === square.col) {
                 player.hits++;
+                anyHit = true;
                 console.log(`Player ${player.name} hit at (${square.row},${square.col})! Total hits: ${player.hits}`);
               }
             });
-            broadcastGameState();
+            if (anyHit) broadcastGameState();
           };
 
           // Check for hits immediately (at 0 seconds)
           checkHit();
 
           // Schedule hit checks every second for the duration
-          const hitCheckIntervals = [];
           const numChecks = Math.floor(duration);
-
           for (let i = 1; i < numChecks; i++) {
-            hitCheckIntervals.push(setTimeout(() => {
-              checkHit();
-            }, i * 1000));
+            setTimeout(checkHit, i * 1000);
           }
 
           // Clear square after duration
           setTimeout(() => {
-            gameState.activeSquares = gameState.activeSquares.filter(s => s.id !== squareId);
+            const clearIdx = gameState.activeSquares.findIndex(s => s.id === squareId);
+            if (clearIdx !== -1) gameState.activeSquares.splice(clearIdx, 1);
             broadcastGameState();
           }, duration * 1000);
         }, warning * 1000); // Warning phase duration (per-square, defaults to 1s)
