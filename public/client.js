@@ -810,9 +810,16 @@ function renderGame() {
 }
 
 // Update players list
+let lastPlayersListSig = null;
 function updatePlayersList() {
     const container = document.getElementById('playersList');
     if (!container || !gameState) return;
+
+    const sig = Object.values(gameState.players)
+        .map(p => `${p.id}|${p.name}|${p.color}|${p.speed}|${p.speedRemaining}|${p.hits}`)
+        .join('||');
+    if (sig === lastPlayersListSig) return;
+    lastPlayersListSig = sig;
 
     container.innerHTML = '';
 
@@ -832,9 +839,16 @@ function updatePlayersList() {
 }
 
 // Update saved patterns list
+let lastSavedPatternsSig = null;
 function updateSavedPatternsList() {
     const container = document.getElementById('savedPatternsList');
     if (!container || !gameState || !isDM) return;
+
+    // Patterns only change on save/delete/import, so JSON.stringify is cheap enough.
+    // Skipping rebuild during attacks keeps Launch/Delete buttons clickable.
+    const sig = JSON.stringify(gameState.savedPatterns);
+    if (sig === lastSavedPatternsSig) return;
+    lastSavedPatternsSig = sig;
 
     container.innerHTML = '';
 
@@ -875,9 +889,19 @@ window.deletePattern = function(index) {
 };
 
 // Update DM players list
+let lastDMPlayersSig = null;
 function updateDMPlayersList() {
     const container = document.getElementById('dmPlayersList');
     if (!container || !gameState || !isDM) return;
+
+    // Only the fields actually rendered here: id, name, max speed.
+    // speedRemaining/hits change every attack tick but aren't shown here,
+    // so keeping the DOM stable avoids swallowing DM button clicks.
+    const sig = Object.values(gameState.players)
+        .map(p => `${p.id}|${p.name}|${p.speed}`)
+        .join('||');
+    if (sig === lastDMPlayersSig) return;
+    lastDMPlayersSig = sig;
 
     container.innerHTML = '';
 
